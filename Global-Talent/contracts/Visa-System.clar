@@ -16,6 +16,8 @@
 (define-constant ERR-INVALID-TALENT-CATEGORY (err u112))
 (define-constant ERR-ENDORSEMENT-REQUIRED (err u113))
 (define-constant ERR-MAINTENANCE-MODE (err u114))
+(define-constant ERR-INVALID-PRINCIPAL (err u115))
+(define-constant ERR-INVALID-LIMIT (err u116))
 
 ;; Validation constants
 (define-constant MIN-TALENT-SCORE u70)
@@ -24,6 +26,7 @@
 (define-constant MAX-COUNTRY-CODE-LENGTH u3)
 (define-constant MIN-COUNTRY-CODE-LENGTH u2)
 (define-constant MAX-ENDORSEMENT-COUNT u10)
+(define-constant MAX-COUNTRY-QUOTA-LIMIT u10000)
 
 ;; Status constants
 (define-constant STATUS-PENDING u0)
@@ -190,6 +193,17 @@
   )
 )
 
+(define-private (is-valid-principal (principal-to-check principal))
+  (not (is-eq principal-to-check (as-contract tx-sender)))
+)
+
+(define-private (is-valid-quota-limit (limit uint))
+  (and 
+    (> limit u0)
+    (<= limit MAX-COUNTRY-QUOTA-LIMIT)
+  )
+)
+
 (define-private (update-application-history (applicant principal) (status uint))
   (let (
     (current-history (default-to 
@@ -249,6 +263,8 @@
   (begin
     (asserts! (is-contract-owner) ERR-UNAUTHORIZED-ACCESS)
     (asserts! (not (var-get maintenance-mode)) ERR-MAINTENANCE-MODE)
+    (asserts! (is-valid-principal officer) ERR-INVALID-PRINCIPAL)
+    (asserts! (not (is-eq officer (var-get contract-owner))) ERR-INVALID-PRINCIPAL)
     (ok (map-set authorized-officers officer authorized))
   )
 )
@@ -265,6 +281,7 @@
     (asserts! (is-contract-owner) ERR-UNAUTHORIZED-ACCESS)
     (asserts! (not (var-get maintenance-mode)) ERR-MAINTENANCE-MODE)
     (asserts! (is-valid-country-code country-code) ERR-INVALID-COUNTRY-CODE)
+    (asserts! (is-valid-quota-limit limit) ERR-INVALID-LIMIT)
     (let ((current-quota (default-to { limit: u0, used: u0 } (map-get? country-quotas country-code))))
       (ok (map-set country-quotas country-code
         { limit: limit, used: (get used current-quota) }
@@ -278,6 +295,8 @@
     (asserts! (is-contract-owner) ERR-UNAUTHORIZED-ACCESS)
     (asserts! (not (var-get maintenance-mode)) ERR-MAINTENANCE-MODE)
     (asserts! (is-valid-talent-category category) ERR-INVALID-TALENT-CATEGORY)
+    (asserts! (is-valid-principal endorser) ERR-INVALID-PRINCIPAL)
+    (asserts! (not (is-eq endorser (var-get contract-owner))) ERR-INVALID-PRINCIPAL)
     (ok (map-set authorized-endorsers endorser { category: category, active: active }))
   )
 )
@@ -340,6 +359,7 @@
   )
     (asserts! (is-authorized-officer tx-sender) ERR-UNAUTHORIZED-ACCESS)
     (asserts! (not (var-get maintenance-mode)) ERR-MAINTENANCE-MODE)
+    (asserts! (is-valid-principal applicant) ERR-INVALID-PRINCIPAL)
     
     (match (map-get? visa-applications application-key)
       application-data
@@ -384,6 +404,7 @@
   (let ((application-key { applicant: applicant, application-id: application-id }))
     (asserts! (is-authorized-officer tx-sender) ERR-UNAUTHORIZED-ACCESS)
     (asserts! (not (var-get maintenance-mode)) ERR-MAINTENANCE-MODE)
+    (asserts! (is-valid-principal applicant) ERR-INVALID-PRINCIPAL)
     
     (match (map-get? visa-applications application-key)
       application-data
@@ -401,6 +422,7 @@
 
 (define-public (check-visa-validity (applicant principal) (application-id uint))
   (let ((application-key { applicant: applicant, application-id: application-id }))
+    (asserts! (is-valid-principal applicant) ERR-INVALID-PRINCIPAL)
     (match (map-get? visa-applications application-key)
       application-data
         (let ((current-height stacks-block-height))
@@ -430,6 +452,7 @@
   (begin
     (asserts! (is-contract-owner) ERR-UNAUTHORIZED-ACCESS)
     (asserts! (not (is-eq new-owner (var-get contract-owner))) ERR-INVALID-APPLICANT)
+    (asserts! (is-valid-principal new-owner) ERR-INVALID-PRINCIPAL)
     (ok (var-set contract-owner new-owner))
   )
 )
